@@ -1,155 +1,116 @@
-/**
- * Going into this, I expect you to have basic knowledge of computer graphics. You should already know what vertices and
- * indices are, as these are the absolute fundamentals for computer graphics. Since these are common concepts talked
- * about in Unity and among game developers in general, this is something you should already be familiar with.
- * If you are not sure what these are, please Google them first!
- */
+#include <glad/gl.h>
+#include <GLFW/glfw3.h>
+#include <stdio.h>
 
-#include <vector>
-#include <GL/glew.h>
-#include <glm/glm.hpp>
+float points[] = {
+  0.0f,  0.5f,  0.0f, // x,y,z of first point.
+   0.5f, -0.5f,  0.0f, // x,y,z of second point.
+  -0.5f, -0.5f,  0.0f  // x,y,z of third point.
+};
 
-#include "Util.h"
 
-constexpr uint32_t width = 720;
 
-constexpr uint32_t height = 480;
 
 int main() {
-    GLFWwindow* window = createWindow(width, height);
+  // Start OpenGL context and OS window using the GLFW helper library.
+  if (!glfwInit()) {
+    fprintf(stderr, "ERROR: could not start GLFW3.\n");
+    return 1;
+  }
 
-    initGlew();
+  // Request an OpenGL 4.1, core, context from GLFW.
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Highly recommend you use sRGB, it has been the standard color format
-    // for at least a decade.
-    glEnable(GL_FRAMEBUFFER_SRGB);
+  // Create a window on the operating system, then tie the OpenGL context to
+  // it.
+  GLFWwindow *window = glfwCreateWindow(800, 600, "Hello Triangle", NULL, NULL);
+  if (!window) {
+    fprintf(stderr, "ERROR: Could not open window with GLFW3.\n");
+    glfwTerminate();
+    return 1;
+  }
+  glfwMakeContextCurrent(window);
 
-    // These two calls should be fairly obvious ;^)
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    // The viewport is the area we are rendering to within the image/window.
-    glViewport(0, 0, width, height);
+  // Start Glad, so we can call OpenGL functions.
+  int version_glad = gladLoadGL(glfwGetProcAddress);
+  if (version_glad == 0) {
+    fprintf(stderr, "ERROR: Failed to initialize OpenGL context.\n");
+    return 1;
+  }
+  printf("Loaded OpenGL %i.%i\n", GLAD_VERSION_MAJOR(version_glad),
+         GLAD_VERSION_MINOR(version_glad));
 
-    // I don't know how familiar you are with shaders, but we can just gloss over this part for now.
-    const GLuint vertexShader = createShaderModule(GL_VERTEX_SHADER, R"(
-#version 450 core
+  // Try to call some OpenGL functions, and print some more version info.
+  printf("Renderer: %s.\n", glGetString(GL_RENDERER));
+  printf("OpenGL version supported %s.\n", glGetString(GL_VERSION));
 
-layout(location = 0) in vec3 position;
+  /* OTHER STUFF GOES HERE NEXT */
 
-void main() {
-    gl_Position = vec4(position, 1.0);
-}
-)");
-    const GLuint fragmentShader = createShaderModule(GL_FRAGMENT_SHADER, R"(
-#version 450 core
+  GLuint vbo = 0;
+  glGenBuffers( 1, &vbo );
+  glBindBuffer( GL_ARRAY_BUFFER, vbo );
+  glBufferData( GL_ARRAY_BUFFER, 9 * sizeof( float ), points, GL_STATIC_DRAW );
+  
 
-layout(location = 0) out vec4 color;
+  GLuint vao = 0;
+  glGenVertexArrays( 1, &vao );
+  glBindVertexArray( vao );
+  glEnableVertexAttribArray( 0 );
+  glBindBuffer( GL_ARRAY_BUFFER, vbo );
+  glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, NULL );
 
-void main() {
-    color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-)");
 
-    // This creates a shader program and links the modules we just created to it.
-    const GLuint shaderProgram = linkModules(vertexShader, fragmentShader);
+  const char* vertex_shader =
+  "#version 410 core\n"
+  "in vec3 vp;"
+  "void main() {"
+  "  gl_Position = vec4( vp, 1.0 );"
+  "}";
 
-    // You can destroy the shader modules after linking a shader program, they are no longer needed unless you plan to
-    // re-use them when linking other shader programs.
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+  const char* fragment_shader =
+  "#version 410 core\n"
+  "out vec4 frag_colour;"
+  "void main() {"
+  "  frag_colour = vec4( 0.5, 0.0, 0.5, 1.0 );"
+  "}";
 
-    const std::vector<glm::vec3> vertices{
-        {-0.5f, -0.5f, 0.0f},
-        {0.5f, -0.5f, 0.0f},
-        {0.0f, 0.5f, 0.0f}
-    };
 
-    GLuint vertexBuffer;
-    glCreateBuffers(
-        1, // the amount of buffers to create
-        &vertexBuffer // the array (in this case just a pointer to our single buffer) to write said buffer indices to
-    );
+  GLuint vs = glCreateShader( GL_VERTEX_SHADER );
+  glShaderSource( vs, 1, &vertex_shader, NULL );
+  glCompileShader( vs );
+  GLuint fs = glCreateShader( GL_FRAGMENT_SHADER );
+  glShaderSource( fs, 1, &fragment_shader, NULL );
+  glCompileShader( fs );
 
-    // Uploads our vertex data to the buffer we just created.
-    glNamedBufferStorage(
-        vertexBuffer, // the buffer to upload to
-        3 * sizeof(glm::vec3), // size
-        vertices.data(), // data pointer
-        0 // the flags, just leave blank usually
-    );
 
-    // This part is something that trips up beginners quite often. A vertex array object is an object that describes
-    // what data and what layout that data is in within our buffer. We first create one of these VAOs.
-    //
-    // For more details you should reference the LearnOpenGL tutorial chapter, under the Vertex Array Object header.
-    // https://learnopengl.com/Getting-started/Hello-Triangle
-    GLuint vertexArrayObject;
-    glCreateVertexArrays(1, &vertexArrayObject);
+  GLuint shader_program = glCreateProgram();
+  glAttachShader( shader_program, fs );
+  glAttachShader( shader_program, vs );
+  glLinkProgram( shader_program );
 
-    // This call binds a buffer, in this case our vertex buffer, to a vertex array object.
-    // The binding, which is NOT the same as a location. A binding specifies the input rate, offset and stride.
-    // Input rate can be per vertex or per object. The offset is the offset into the buffer in bytes where our
-    // data starts. The stride is the size of each element in our buffer in bytes.
-    // https://registry.khronos.org/OpenGL-Refpages/gl4/html/glBindVertexBuffer.xhtml
-    glVertexArrayVertexBuffer(
-        vertexArrayObject, // Vertex array object
-        0, // Binding
-        vertexBuffer, // Buffer
-        0, // Offset in bytes
-        sizeof(glm::vec3) // Stride in bytes
-    );
 
-    // This call defines the format for our vertex array object attribute. This will tell OpenGL what type, size and
-    // offset to use to access this attribute in our buffer.
-    glVertexArrayAttribFormat(
-        vertexArrayObject, // vao
-        0, // attribute index
-        3, // size in whatever type you specify as the next argument.
-        GL_FLOAT, // type of element, float in this case
-        GL_FALSE, // is the element normalized?
-        0 // The offset within this attribute in bytes
-    );
+  while ( !glfwWindowShouldClose( window ) ) {
+    // Update window events.
+    glfwPollEvents();
+    
+    // Wipe the drawing surface clear.
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-    // Enables the vertex array object attribute which we have been setting up at location 0.
-    glEnableVertexArrayAttrib(
-        vertexArrayObject, // vao
-        0 // index
-    );
+    // Put the shader program, and the VAO, in focus in OpenGL's state machine.
+    glUseProgram( shader_program );
+    glBindVertexArray( vao );
 
-    // This call couples our attribute index to our binding index.
-    glVertexArrayAttribBinding(
-        vertexArrayObject, // vao
-        0, // attribute index
-        0 // binding index
-    );
+    // Draw points 0-3 from the currently bound VAO with current in-use shader.
+    glDrawArrays( GL_TRIANGLES, 0, 3 );
+    
+    // Put the stuff we've been drawing onto the visible area.
+    glfwSwapBuffers( window );
+  }
 
-    while (!glfwWindowShouldClose(window)) {
-        // Checks and processes window, keyboard, mouse, etc. events.
-        glfwPollEvents();
-
-        // Clears the backbuffer, which is the window surface we are rendering to. This clears to whatever color you
-        // specified as clear color in the glClearColor call. You may always change the clear color by calling it again.
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        // Binds the shader program to our pipeline.
-        glUseProgram(shaderProgram);
-
-        // Binds our vertex array object, so OpenGL knows the structure of what is in our vertex buffer.
-        glBindVertexArray(vertexArrayObject);
-
-        // This is our most basic form of draw calls. This draws the triangle WITHOUT USING AN INDEX BUFFER.
-        // Index buffers are extremely important since they save us memory and are much faster performance wise.
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-
-        // This swaps the back buffer to the window surface, essentially copying the image we were rendering to
-        // to our window so we have an actual output that is on our screen instead of just on the GPU.
-        glfwSwapBuffers(window);
-    }
-
-    // DON'T FORGET TO DELETE ANY RESOURCES YOU HAVE CREATED!!!!
-    glDeleteVertexArrays(1, &vertexArrayObject);
-    glDeleteBuffers(1, &vertexBuffer);
-    glDeleteProgram(shaderProgram);
-    destroyWindow(window);
-
-    return 0;
+  // Close OpenGL window, context, and any other GLFW resources.
+  glfwTerminate();
+  return 0;
 }
